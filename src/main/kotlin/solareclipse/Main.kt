@@ -1,17 +1,14 @@
-package solar
+package solareclipse
 
-import solareclipse.Body
-import solareclipse.Vector3
 import java.time.Duration
 import java.time.Instant
 
 class EclipseFinderManual {
 
     val startDate: Instant = Instant.parse("1990-01-01T00:00:00.0000Z")
+
     /**
-     * Gravitational constant in **km³ kg⁻¹ s⁻²**, i.e. the SI value 6.67430e-11 m³ kg⁻¹ s⁻² scaled
-     * by 1e-9. The state vectors below are the km / km-per-second ones from JPL Horizons, so using
-     * the SI value here would overstate every acceleration by a factor of 1e9.
+     * Gravitational constant in km³/ (kg s²)
      */
     val G = 6.67430e-20
     val secondsPerStep = 1L
@@ -23,11 +20,9 @@ class EclipseFinderManual {
     fun findEclipsesUntil(to: Instant) {
         val startSeconds = startDate.epochSecond
         val endSeconds = to.epochSecond
-        val accs = Array(ALL.size) { Vector3.ZERO }
+        val accelerations = Array(ALL.size) { Vector3.ZERO }
         for (step in startSeconds..endSeconds step secondsPerStep) {
-            // Has to be cleared every step, otherwise each step adds to the previous step's
-            // acceleration instead of replacing it and the bodies fly apart.
-            accs.fill(Vector3.ZERO)
+            accelerations.fill(Vector3.ZERO)
             for (i in ALL.indices) {
                 for (j in ALL.indices) {
                     if (i == j) {
@@ -36,24 +31,20 @@ class EclipseFinderManual {
                     val pos1 = ALL[i].position
                     val pos2 = ALL[j].position
 
-                    // F = G*m1*m2 / r², F = m*a, so a_i = G*m2 / r² towards j - the mass of the
-                    // body being accelerated cancels. Everything here is in km, so [G] is the
-                    // km³ variant.
+                    // F = G*m1*m2 / r², F = m*a, so a_i = G*m2 / r² towards j
                     val vectorToJ = pos2.minus(pos1)
-                    val r = vectorToJ.norm
-                    val acc = ALL[j].massKg * G / (r * r)
-                    accs[i] += vectorToJ.normalized() * acc
+                    val distanceItoJ = vectorToJ.norm
+                    val acc = ALL[j].massKg * G / (distanceItoJ * distanceItoJ)
+                    accelerations[i] += vectorToJ.normalized() * acc
                 }
             }
             for (i in ALL.indices) {
                 val obj = ALL[i]
-                obj.velocity += accs[i] * (1.0 * secondsPerStep)
+                obj.velocity += accelerations[i] * (1.0 * secondsPerStep)
                 obj.position += obj.velocity * (1.0 * secondsPerStep)
             }
             checkForEclipses(step)
         }
-        // An eclipse still in progress when the loop ends would otherwise never be printed.
-        reportSolarEclipse()
     }
 
     private fun checkForEclipses(step: Long) {
@@ -69,19 +60,9 @@ class EclipseFinderManual {
         }
     }
 
-    /**
-     * Prints the eclipse window collected so far and clears it, so that one eclipse produces one
-     * line rather than one line per step.
-     *
-     * The middle is quoted as the greatest eclipse: the shadow axis crosses the Earth in very
-     * nearly a straight line, and the midpoint of a chord through a sphere is its closest approach
-     * to the centre, which is how the canon defines that instant. It is only as exact as the
-     * straight line is, plus half a [secondsPerStep] of sampling.
-     */
     private fun reportSolarEclipse() {
         val from = eclipseStart ?: return
         val until = eclipseEnd ?: return
-        // The sampled window covers one step more than the gap between its first and last step.
         val duration = Duration.ofSeconds(until - from + secondsPerStep)
         println(
             "${Instant.ofEpochSecond(from)}\t" +
@@ -98,37 +79,21 @@ class EclipseFinderManual {
         val directionSunMoon = SUN.position - MOON.position
         val startingPoint = MOON.position
         val earthCenter = EARTH.position
-        // The line is infinite in both directions, so it also runs through the Earth during a
-        // *lunar* eclipse, when the Earth is between the Sun and the Moon. In that case the Earth
-        // lies on the sunward side of the Moon and the dot product is positive; during a solar
-        // eclipse the Moon is in the middle and the Earth is behind it, so it is negative.
+        // If this is negative, we have a lunar eclipse. We only check for solar here
         if ((earthCenter - startingPoint) dot directionSunMoon > 0.0) {
             return false
         }
-        val distance = calculateDistance(startingPoint, directionSunMoon, earthCenter)
+        val distance = betweenLineAndPoint(startingPoint, directionSunMoon, earthCenter)
         return distance < EARTH.radiusKm
     }
 
-    /**
-     * Calculates the distance between a line and a point
-     *
-     * The line runs through [startingPoint] along [directionSunMoon] and is infinite in *both*
-     * directions. With `w = earthCenter - startingPoint` the perpendicular distance is
-     * `|w x d| / |d|`: the cross product's length is `|w| * |d| * sin(angle)`, so dividing by
-     * `|d|` leaves `|w| * sin(angle)`, which is the opposite side of the right triangle.
-     *
-     * Taking the cross product rather than subtracting the projection (`sqrt(|w|^2 - (w.d^)^2)`)
-     * matters here: near an eclipse the point lies almost on the line, and the projection form
-     * then subtracts two nearly equal large numbers and loses most of its significant digits.
-     *
-     * Units follow the inputs, so km in, km out.
-     */
-    private fun calculateDistance(
-        startingPoint: Vector3,
-        directionSunMoon: Vector3,
-        earthCenter: Vector3
-    ): Double =
-        ((earthCenter - startingPoint) cross directionSunMoon).norm / directionSunMoon.norm
+    private fun betweenLineAndPoint(
+        pointOnLine: Vector3,
+        directionOfLine: Vector3,
+        pointToCalculateDistanceTo: Vector3
+    ): Double {
+        return ((pointToCalculateDistanceTo - pointOnLine) cross directionOfLine).norm / directionOfLine.norm
+    }
 
     val SUN = Body(
         name = "Sun",
@@ -181,8 +146,8 @@ class EclipseFinderManual {
         name = "Jupiter",
         massKg = 1.898518e+27,
         radiusKm = 69911.0,
-        position = Vector3(-8.493793618952541E+07 , 7.658918589225457E+08 ,-1.273525058914423E+06),
-        velocity = Vector3(-1.315587234739015E+01 ,-8.320112388059692E-01 , 2.981679023688071E-01),
+        position = Vector3(-8.493793618952541E+07, 7.658918589225457E+08, -1.273525058914423E+06),
+        velocity = Vector3(-1.315587234739015E+01, -8.320112388059692E-01, 2.981679023688071E-01),
     )
 
     val SATURN = Body(

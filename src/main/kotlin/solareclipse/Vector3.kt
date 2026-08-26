@@ -27,8 +27,6 @@ data class Vector3(val x: Double, val y: Double, val z: Double) {
 
     val norm: Double get() = sqrt(this dot this)
 
-    val normSquared: Double get() = this dot this
-
     /** Unit vector in the same direction. Undefined for the zero vector. */
     fun normalized(): Vector3 = this / norm
 
