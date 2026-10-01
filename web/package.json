@@ -1,0 +1,20 @@
+{
+  "name": "flat-earth-eclipse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "3D visualisation: what object would have to cast a real solar eclipse umbra on a flat earth with a local sun",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch"
+  },
+  "dependencies": {
+    "astronomy-engine": "^2.1.19",
+    "three": "^0.186.1",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
