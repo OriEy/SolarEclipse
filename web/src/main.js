@@ -17,6 +17,8 @@ import { drawMap } from './map.js';
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
 
+const UNIT_SPHERE = new THREE.SphereGeometry(1, 96, 48);
+
 const COLORS = {
   sun: 0xffd34d,
   object: 0xb98cff,
@@ -40,6 +42,8 @@ const state = {
   showRays: true,
   showSunCircle: true,
   showLabels: true,
+  trueScale: true,
+  fromShadow: false, // camera stands in the umbra and looks at the Sun
   eclipse: null, // { kind, peak, start, end, samples[], markers[] }
 };
 
@@ -119,19 +123,22 @@ discEdge.position.y = -0.3;
 scene.add(discEdge);
 
 // Live objects: the Sun, the occulting object, the ray between them and the shadow spot.
-const sunMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(0.22, 32, 16),
-  new THREE.MeshBasicMaterial({ color: COLORS.sun }),
-);
-sunMesh.add(makeGlow(2.2));
+// Each is a group so the body can be scaled to its size without scaling the glow or label.
+const sunMesh = new THREE.Group();
+const sunBody = new THREE.Mesh(UNIT_SPHERE, new THREE.MeshBasicMaterial({ color: COLORS.sun }));
+const sunGlow = makeGlow(2.2);
+sunMesh.add(sunBody, sunGlow);
 scene.add(sunMesh);
 const sunLabel = makeLabel('', 'label sun-label');
 sunMesh.add(sunLabel);
 
-const objectMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(0.16, 32, 16),
+const objectMesh = new THREE.Group();
+const objectBody = new THREE.Mesh(
+  UNIT_SPHERE,
   new THREE.MeshLambertMaterial({ color: 0x4b3a66, emissive: 0x1a1030 }),
 );
+const objectHalo = makeHalo(COLORS.object, 0.045);
+objectMesh.add(objectBody, objectHalo);
 scene.add(objectMesh);
 const objectLabel = makeLabel('object', 'label object-label');
 objectMesh.add(objectLabel);
@@ -161,7 +168,7 @@ scene.add(pathsGroup);
 // ---------------------------------------------------------------------------------------
 // Eclipse selection
 
-const eclipses = listCentralEclipses(new Date('2015-01-01T00:00:00Z'), 30);
+const eclipses = listCentralEclipses(new Date('1990-01-01T00:00:00Z'), 70);
 const select = $('eclipse');
 eclipses.forEach((e, i) => {
   const opt = document.createElement('option');
@@ -220,6 +227,20 @@ function flatGeometry(s) {
   return { ground, sun, object };
 }
 
+/** Object diameter (km) needed for a globe sample's umbra; <= 0 means no object can do it. */
+function objectDiameterKm(s) {
+  return requiredObjectDiameterKm(2 * s.umbraRadiusKm, state.sunDiameterKm, state.objectHeightKm, state.sunHeightKm);
+}
+
+/** Drawn radius in scene units: true size, or a fixed exaggerated size so it stays visible. */
+function displayRadius(diameterKm, exaggerated) {
+  return state.trueScale || state.fromShadow ? Math.max(diameterKm, 0) / 2 / KM_PER_UNIT : exaggerated;
+}
+
+function fmtDiameter(km) {
+  return km > 0 ? fmtKm(km) : 'none fits';
+}
+
 function objectSpeedKmh(date) {
   const at = (ms) => {
     const c = shadowCenter(new Date(ms));
@@ -258,17 +279,25 @@ function rebuildPaths() {
     const edge = m.kind !== 'step';
     const marker = new THREE.Group();
 
-    const sun = new THREE.Mesh(
-      new THREE.SphereGeometry(edge ? 0.1 : 0.14, 24, 12),
+    const sun = new THREE.Group();
+    const sunBody = new THREE.Mesh(
+      UNIT_SPHERE,
       new THREE.MeshBasicMaterial({ color: COLORS.sun, transparent: true, opacity: edge ? 0.5 : 0.8 }),
     );
+    sunBody.scale.setScalar(displayRadius(state.sunDiameterKm, edge ? 0.1 : 0.14));
+    sun.add(sunBody, makeHalo(COLORS.sun, edge ? 0.022 : 0.03));
     sun.position.copy(v3(g.sun));
     marker.add(sun);
 
-    const obj = new THREE.Mesh(
-      new THREE.SphereGeometry(edge ? 0.08 : 0.11, 24, 12),
+    const diameter = objectDiameterKm(m);
+    const obj = new THREE.Group();
+    const objBody = new THREE.Mesh(
+      UNIT_SPHERE,
       new THREE.MeshLambertMaterial({ color: COLORS.object, transparent: true, opacity: edge ? 0.5 : 0.85 }),
     );
+    objBody.scale.setScalar(displayRadius(diameter, edge ? 0.08 : 0.11));
+    objBody.visible = diameter > 0;
+    obj.add(objBody, makeHalo(COLORS.object, edge ? 0.022 : 0.03));
     obj.position.copy(v3(g.object));
     marker.add(obj);
 
@@ -290,6 +319,9 @@ function rebuildPaths() {
       const label = makeLabel(text, 'label marker-label');
       label.position.set(0, 0.25, 0);
       sun.add(label);
+      const size = makeLabel(`Ø ${fmtDiameter(diameter)}`, 'label marker-object-label');
+      size.position.set(0, -0.2, 0);
+      obj.add(size);
     }
     pathsGroup.add(marker);
   }
@@ -308,6 +340,8 @@ function updateLive() {
 
   const sun = sunPosition(subsolar, state.sunHeightKm);
   sunMesh.position.copy(v3(sun));
+  sunBody.scale.setScalar(displayRadius(state.sunDiameterKm, 0.22));
+  sunGlow.scale.setScalar(state.fromShadow ? (6 * state.sunDiameterKm) / KM_PER_UNIT : 2.2);
   sunLight.position.copy(sunMesh.position);
   sunLabel.element.textContent = `${fmtTime(date, true)} UTC`;
   sunLabel.position.set(0, 0.45, 0);
@@ -317,7 +351,8 @@ function updateLive() {
   discUniforms.dayNight.value = state.showDayNight ? 1 : 0;
 
   const visible = !!c;
-  for (const o of [objectMesh, liveRay, liveDrop, shadowSpot, shadowRing]) o.visible = visible;
+  for (const o of [objectMesh, shadowSpot, shadowRing]) o.visible = visible;
+  liveRay.visible = liveDrop.visible = visible && !state.fromShadow;
   if (!c) return;
 
   const g = flatGeometry({ ...c, subsolar });
@@ -328,10 +363,14 @@ function updateLive() {
   shadowSpot.scale.setScalar(r);
   shadowSpot.position.set(g.ground.x, 0.012, g.ground.z);
   shadowRing.position.set(g.ground.x, 0.014, g.ground.z);
-  objectLabel.position.set(0, -0.32, 0);
 
   const umbraKm = 2 * c.umbraRadiusKm;
-  const diameter = requiredObjectDiameterKm(umbraKm, state.sunDiameterKm, state.objectHeightKm, state.sunHeightKm);
+  const diameter = objectDiameterKm(c);
+  objectBody.scale.setScalar(displayRadius(diameter, 0.16));
+  objectBody.visible = diameter > 0;
+  if (state.fromShadow) lookFromShadow(g);
+  objectLabel.position.set(0, -0.32, 0);
+  objectLabel.element.textContent = `object Ø ${fmtDiameter(diameter)}`;
   setReadout({
     rTime: `${date.toISOString().slice(0, 10)} ${fmtTime(date, true)} UTC`,
     rShadow: `${fmtLat(c.lat)} ${fmtLon(c.lon)}`,
@@ -341,7 +380,11 @@ function updateLive() {
     rSunDist: `${fmtKm(distanceKm(g.sun, g.ground))}`,
     rObjPos: `${fmtKm(Math.hypot(g.object.x, g.object.z) * KM_PER_UNIT)} from pole, ${fmtKm(state.objectHeightKm)} up`,
     rObjSpeed: `${fmtKm(objectSpeedKmh(date))}/h`,
-    rObjDiam: `${fmtKm(diameter)}`,
+    rObjDiam: fmtDiameter(diameter),
+    // Seen from the umbra; distances along the line scale with height.
+    rObjRatio: diameter > 0
+      ? `${((diameter / state.sunDiameterKm) * (state.sunHeightKm / state.objectHeightKm)).toFixed(2)}×`
+      : '–',
   });
   $('time').value = String(state.timeMs);
   $('timeText').textContent = `${fmtTime(date, true)} UTC`;
@@ -350,15 +393,14 @@ function updateLive() {
 function updateTable() {
   const rows = state.eclipse.markers.map((m) => {
     const g = flatGeometry(m);
-    const umbraKm = 2 * m.umbraRadiusKm;
-    const d = requiredObjectDiameterKm(umbraKm, state.sunDiameterKm, state.objectHeightKm, state.sunHeightKm);
+    const d = objectDiameterKm(m);
     return `<tr class="${m.kind}" data-ms="${m.date.getTime()}">
       <td>${fmtTime(m.date)}</td>
       <td>${fmtLat(m.lat)}<br>${fmtLon(m.lon)}</td>
       <td>${m.sunAltitudeDeg.toFixed(0)}° / ${sunElevationDeg(g.sun, g.ground).toFixed(0)}°</td>
       <td>${fmtKm(Math.hypot(g.object.x, g.object.z) * KM_PER_UNIT)}</td>
       <td>${fmtKm(objectSpeedKmh(m.date))}/h</td>
-      <td>${fmtKm(d)}</td>
+      <td>${fmtDiameter(d)}</td>
     </tr>`;
   });
   $('markerRows').innerHTML = rows.join('');
@@ -367,7 +409,33 @@ function updateTable() {
 // ---------------------------------------------------------------------------------------
 // Camera framing
 
+/**
+ * Stands the camera in the centre of the umbra, looking at the Sun, with a field of view a few
+ * Sun diameters wide. At true size the object then exactly covers the Sun.
+ */
+function lookFromShadow(g) {
+  camera.position.set(g.ground.x, 0.002, g.ground.z);
+  camera.lookAt(sunMesh.position);
+  const sunAngleDeg = (state.sunDiameterKm / distanceKm(g.sun, g.ground)) / DEG;
+  camera.fov = Math.min(Math.max(sunAngleDeg * 5, 0.05), 45);
+  camera.updateProjectionMatrix();
+}
+
+function setView(fromShadow) {
+  state.fromShadow = fromShadow;
+  controls.enabled = !fromShadow;
+  pathsGroup.visible = !fromShadow;
+  objectHalo.visible = !fromShadow;
+  sunLabel.visible = objectLabel.visible = state.showLabels && !fromShadow;
+  $('viewShadow').classList.toggle('active', fromShadow);
+  if (!fromShadow) {
+    camera.fov = 45;
+    camera.updateProjectionMatrix();
+  }
+}
+
 function frameEclipse() {
+  setView(false);
   const geo = state.eclipse.samples.map(flatGeometry);
   const box = new THREE.Box3();
   for (const g of geo) box.expandByPoint(v3(g.ground)).expandByPoint(v3(g.sun));
@@ -382,12 +450,14 @@ function frameEclipse() {
 }
 
 function frameOverview() {
+  setView(false);
   controls.target.set(0, state.sunHeightKm / KM_PER_UNIT / 3, 0);
   camera.position.set(0, DISC_RADIUS * 0.95, DISC_RADIUS * 1.45);
   controls.update();
 }
 
 function frameTop() {
+  setView(false);
   controls.target.set(0, 0, 0);
   camera.position.set(0, DISC_RADIUS * 3.2, 0.001);
   controls.update();
@@ -426,7 +496,7 @@ bindRange('sunHeight', 'sunHeightKm', fmtKm, () => {
 });
 clampObjectHeight();
 bindRange('objectHeight', 'objectHeightKm', fmtKm, rebuildPaths);
-bindRange('sunDiameter', 'sunDiameterKm', fmtKm, updateTable);
+bindRange('sunDiameter', 'sunDiameterKm', fmtKm, rebuildPaths);
 bindRange('speed', 'speed', (v) => `${v} min/s`);
 
 $('interval').value = String(state.intervalMin);
@@ -441,12 +511,13 @@ for (const [id, key] of [
   ['showRays', 'showRays'],
   ['showSunCircle', 'showSunCircle'],
   ['showLabels', 'showLabels'],
+  ['trueScale', 'trueScale'],
 ]) {
   $(id).checked = state[key];
   $(id).addEventListener('change', () => {
     state[key] = $(id).checked;
     if (key === 'showLabels') {
-      sunLabel.visible = objectLabel.visible = state.showLabels;
+      sunLabel.visible = objectLabel.visible = state.showLabels && !state.fromShadow;
     }
     rebuildPaths();
   });
@@ -467,6 +538,7 @@ $('play').addEventListener('click', () => {
 $('viewEclipse').addEventListener('click', frameEclipse);
 $('viewOverview').addEventListener('click', frameOverview);
 $('viewTop').addEventListener('click', frameTop);
+$('viewShadow').addEventListener('click', () => setView(true));
 $('togglePanel').addEventListener('click', () => document.body.classList.toggle('panel-collapsed'));
 
 $('markerRows').addEventListener('click', (ev) => {
@@ -495,7 +567,7 @@ renderer.setAnimationLoop((now) => {
     if (state.timeMs > state.eclipse.end.getTime()) state.timeMs = state.eclipse.start.getTime();
   }
   updateLive();
-  controls.update();
+  if (!state.fromShadow) controls.update();
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
 });
@@ -536,7 +608,8 @@ function makeLabel(text, className) {
 
 function disposeGroup(group) {
   group.traverse((o) => {
-    o.geometry?.dispose();
+    if (o.geometry !== UNIT_SPHERE) o.geometry?.dispose();
+    o.material?.map?.dispose();
     o.material?.dispose();
     if (o.isCSS2DObject) o.element.remove();
   });
@@ -557,6 +630,23 @@ function makeGlow(scale) {
     new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthWrite: false, blending: THREE.AdditiveBlending }),
   );
   sprite.scale.setScalar(scale);
+  return sprite;
+}
+
+/** A ring that keeps the same size on screen, so tiny true-scale bodies can still be found. */
+function makeHalo(color, screenSize) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(32, 32, 27, 0, 2 * Math.PI);
+  ctx.stroke();
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), color, sizeAttenuation: false, depthWrite: false, opacity: 0.8 }),
+  );
+  sprite.scale.setScalar(screenSize);
   return sprite;
 }
 

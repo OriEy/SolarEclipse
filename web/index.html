@@ -87,6 +87,7 @@
     cursor: pointer;
   }
   button:hover { border-color: var(--muted); }
+  button.active { border-color: var(--sun); color: var(--sun); }
   button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
 
   .legend { display: grid; gap: 4px; font-size: 14px; }
@@ -108,6 +109,7 @@
   .sun-label { color: var(--sun); font-size: 12px; }
   .marker-label { color: #ffe3a0; }
   .object-label { color: var(--object); }
+  .marker-object-label { color: var(--object); font-size: 10px; }
 
   .overlay { position: absolute; background: rgba(13, 18, 32, 0.88); border: 1px solid var(--line); border-radius: 6px; }
   #views { top: 12px; right: 12px; padding: 6px; display: flex; gap: 6px; }
@@ -166,7 +168,8 @@
     <label class="field">Sun diameter <output id="sunDiameterOut"></output>
       <input id="sunDiameter" type="range" min="1" max="500" step="1"></label>
     <p class="hint">The shadow only fixes the line from the sun to the umbra. The object can sit anywhere on it,
-      so its height is a free choice. The diameter it needs follows from the sun's diameter.</p>
+      so its height is a free choice. The diameter it needs follows from the sun's diameter: it has to
+      cover the sun as seen from the shadow, plus the width of the umbra itself.</p>
   </section>
 
   <section>
@@ -183,11 +186,14 @@
       <label><input id="showLabels" type="checkbox"> Labels</label>
       <label><input id="showSunCircle" type="checkbox"> Sun's daily circle</label>
       <label><input id="showDayNight" type="checkbox"> Real day / night</label>
+      <label><input id="trueScale" type="checkbox"> True sizes</label>
     </div>
     <div class="legend">
       <span><i style="background: var(--sun)"></i>Sun and its path during the eclipse</span>
       <span><i style="background: var(--object)"></i>Object and its path</span>
       <span><i style="background: var(--track)"></i>Umbra track (real central line)</span>
+      <span class="hint">With "True sizes" on, the sun, object and umbra are drawn at their real diameter.
+        Rings mark them so they stay findable when zoomed out. Zoom in to compare.</span>
     </div>
   </section>
 
@@ -211,6 +217,7 @@
     <button id="viewEclipse" type="button">Eclipse</button>
     <button id="viewOverview" type="button">Whole disc</button>
     <button id="viewTop" type="button">Top</button>
+    <button id="viewShadow" type="button" title="Stand in the umbra and look up at the sun">From shadow</button>
   </div>
   <dl id="readout" class="overlay">
     <dt>Time</dt><dd id="rTime"></dd>
@@ -222,6 +229,7 @@
     <dt class="obj">Object position</dt><dd id="rObjPos"></dd>
     <dt class="obj">Object speed</dt><dd id="rObjSpeed"></dd>
     <dt class="obj">Object Ø needed</dt><dd id="rObjDiam"></dd>
+    <dt class="obj" title="Apparent size of the object compared with the sun, seen from the centre of the umbra. The real Moon is 1.00–1.08× during a total eclipse.">Object / sun, seen from shadow</dt><dd id="rObjRatio"></dd>
   </dl>
   <div id="timeline" class="overlay">
     <button id="play" type="button">Play</button>

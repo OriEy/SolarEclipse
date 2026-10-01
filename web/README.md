@@ -14,6 +14,11 @@ A 3D simulation of how a real solar eclipse would have to work on a flat earth.
   straight line between them. The shadow alone cannot tell *where* on that line, so the object's
   height is a parameter. Its required diameter follows from similar triangles:
   `d = (umbra · (H − h) + sunDiameter · h) / H` for sun height `H` and object height `h`.
+- Eclipses from 1990 to 2038 can be chosen, e.g. the 11 August 1999 total eclipse over Europe.
+- With "True sizes" on, the Sun, the object and the umbra are drawn at their real diameters.
+  The "From shadow" view stands in the umbra and looks up at the Sun, so you can see the object
+  covering it. The readout compares the object's apparent size with the Sun's (the real Moon is
+  1.00–1.08× during a total eclipse).
 - Snapshots (every 15 min – 2 h) show the Sun, the line of possible object positions, and the object.
   The table compares the Sun's real altitude at the umbra with its elevation in the flat model,
   and lists the object's speed and needed diameter.
