@@ -42,7 +42,7 @@ export function subsolarPoint(date) {
 /**
  * Where the shadow axis (Sun centre -> Moon centre, continued) hits the Earth ellipsoid,
  * or null if it misses. Also returns the umbra radius perpendicular to the axis
- * (negative = antumbra, i.e. annular) and the real Sun altitude at that point.
+ * (negative = antumbra, i.e. annular), the penumbra radius, and the real Sun altitude there.
  */
 export function shadowCenter(date) {
   const time = Astronomy.MakeTime(date);
@@ -66,14 +66,16 @@ export function shadowCenter(date) {
   const p = { x: moon.x + s * dx, y: moon.y + s * dy, z: moon.z + s * dz };
   const geo = toGeo(p, time);
 
-  // Umbral cone: radius shrinks linearly behind the Moon.
+  // Umbral cone: radius shrinks linearly behind the Moon. Penumbral cone: grows linearly.
+  // Both are measured perpendicular to the shadow axis.
   const umbraRadiusKm = MOON_RADIUS_KM - s * (SUN_RADIUS_KM - MOON_RADIUS_KM) / dSunMoon;
+  const penumbraRadiusKm = MOON_RADIUS_KM + s * (SUN_RADIUS_KM + MOON_RADIUS_KM) / dSunMoon;
 
   const observer = new Astronomy.Observer(geo.lat, geo.lon, 0);
   const eq = Astronomy.Equator(Astronomy.Body.Sun, time, observer, true, true);
   const hor = Astronomy.Horizon(time, observer, eq.ra, eq.dec, null);
 
-  return { lat: geo.lat, lon: geo.lon, umbraRadiusKm, sunAltitudeDeg: hor.altitude };
+  return { lat: geo.lat, lon: geo.lon, umbraRadiusKm, penumbraRadiusKm, sunAltitudeDeg: hor.altitude };
 }
 
 /** Lists central (total / annular / hybrid) solar eclipses starting at the given date. */

@@ -19,6 +19,14 @@ A 3D simulation of how a real solar eclipse would have to work on a flat earth.
   The "From shadow" view stands in the umbra and looks up at the Sun, so you can see the object
   covering it. The readout compares the object's apparent size with the Sun's (the real Moon is
   1.00–1.08× during a total eclipse).
+- By default the object's height and size are solved from the shadow. The umbra width alone
+  leaves the height free, but the penumbra (partial-eclipse zone, ~7,000 km wide) gives a second
+  equation. With `k = h / (H − h)`: `umbra = d − (sunDiameter − d)·k` and
+  `penumbra = d + (sunDiameter + d)·k`, so `k = (penumbra − umbra) / (2·sunDiameter)` and
+  `d = (penumbra + umbra) / (2·(1 + k))`. Untick the box to set the height by hand.
+- The readout also shows how big the flat-earth Sun looks from the shadow, and how big it would
+  have to be to look 0.53° wide like the real one. This is where the model stops fitting: the
+  answer changes over the course of the eclipse.
 - Snapshots (every 15 min – 2 h) show the Sun, the line of possible object positions, and the object.
   The table compares the Sun's real altitude at the umbra with its elevation in the flat model,
   and lists the object's speed and needed diameter.

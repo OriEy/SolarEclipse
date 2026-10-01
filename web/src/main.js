@@ -11,11 +11,15 @@ import {
   distanceKm,
   sunElevationDeg,
   requiredObjectDiameterKm,
+  solveObject,
 } from './flat.js';
 import { drawMap } from './map.js';
 
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
+
+/** Mean apparent diameter of the real Sun. */
+const SUN_ANGULAR_DIAMETER_DEG = 0.533;
 
 const UNIT_SPHERE = new THREE.SphereGeometry(1, 96, 48);
 
@@ -33,6 +37,7 @@ const COLORS = {
 const state = {
   sunHeightKm: 5000,
   objectHeightKm: 3000,
+  autoObject: true, // solve height and size from umbra + penumbra instead of using objectHeightKm
   sunDiameterKm: 51,
   intervalMin: 60,
   speed: 10, // simulated minutes per real second
@@ -219,17 +224,23 @@ function rebuildMarkers() {
 // ---------------------------------------------------------------------------------------
 // Geometry derived from the current parameters
 
+/** Object height (km) for a globe sample: solved from its shadow, or the manual setting. */
+function objectHeightKm(s) {
+  if (!state.autoObject) return state.objectHeightKm;
+  return solveObject(2 * s.umbraRadiusKm, 2 * s.penumbraRadiusKm, state.sunDiameterKm, state.sunHeightKm).heightKm;
+}
+
 /** Flat-earth positions for one globe sample (track point + subsolar point). */
 function flatGeometry(s) {
   const ground = project(s.lat, s.lon);
   const sun = sunPosition(s.subsolar, state.sunHeightKm);
-  const object = objectPosition(sun, ground, state.objectHeightKm, state.sunHeightKm);
+  const object = objectPosition(sun, ground, objectHeightKm(s), state.sunHeightKm);
   return { ground, sun, object };
 }
 
 /** Object diameter (km) needed for a globe sample's umbra; <= 0 means no object can do it. */
 function objectDiameterKm(s) {
-  return requiredObjectDiameterKm(2 * s.umbraRadiusKm, state.sunDiameterKm, state.objectHeightKm, state.sunHeightKm);
+  return requiredObjectDiameterKm(2 * s.umbraRadiusKm, state.sunDiameterKm, objectHeightKm(s), state.sunHeightKm);
 }
 
 /** Drawn radius in scene units: true size, or a fixed exaggerated size so it stays visible. */
@@ -366,6 +377,12 @@ function updateLive() {
 
   const umbraKm = 2 * c.umbraRadiusKm;
   const diameter = objectDiameterKm(c);
+  const sunDistanceKm = distanceKm(g.sun, g.ground);
+  if (state.autoObject) {
+    const h = Math.round(objectHeightKm(c));
+    objectInput.value = String(h);
+    $('objectHeightOut').textContent = `${fmtKm(h)} (auto)`;
+  }
   objectBody.scale.setScalar(displayRadius(diameter, 0.16));
   objectBody.visible = diameter > 0;
   if (state.fromShadow) lookFromShadow(g);
@@ -375,16 +392,20 @@ function updateLive() {
     rTime: `${date.toISOString().slice(0, 10)} ${fmtTime(date, true)} UTC`,
     rShadow: `${fmtLat(c.lat)} ${fmtLon(c.lon)}`,
     rUmbra: `${umbraKm < 0 ? 'antumbra ' : ''}${Math.abs(umbraKm).toFixed(0)} km`,
+    rPenumbra: fmtKm(2 * c.penumbraRadiusKm),
     rRealAlt: `${c.sunAltitudeDeg.toFixed(1)}°`,
     rFlatAlt: `${sunElevationDeg(g.sun, g.ground).toFixed(1)}°`,
     rSunDist: `${fmtKm(distanceKm(g.sun, g.ground))}`,
-    rObjPos: `${fmtKm(Math.hypot(g.object.x, g.object.z) * KM_PER_UNIT)} from pole, ${fmtKm(state.objectHeightKm)} up`,
+    rObjPos: `${fmtKm(Math.hypot(g.object.x, g.object.z) * KM_PER_UNIT)} from pole, ${fmtKm(objectHeightKm(c))} up`,
     rObjSpeed: `${fmtKm(objectSpeedKmh(date))}/h`,
     rObjDiam: fmtDiameter(diameter),
     // Seen from the umbra; distances along the line scale with height.
     rObjRatio: diameter > 0
-      ? `${((diameter / state.sunDiameterKm) * (state.sunHeightKm / state.objectHeightKm)).toFixed(2)}×`
+      ? `${((diameter / state.sunDiameterKm) * (state.sunHeightKm / objectHeightKm(c))).toFixed(2)}×`
       : '–',
+    // The real Sun is about 0.53° wide from everywhere; the flat one only from one distance.
+    rSunSize: `${((state.sunDiameterKm / sunDistanceKm) / DEG).toFixed(2)}°`,
+    rSunNeeded: fmtKm(SUN_ANGULAR_DIAMETER_DEG * DEG * sunDistanceKm),
   });
   $('time').value = String(state.timeMs);
   $('timeText').textContent = `${fmtTime(date, true)} UTC`;
@@ -398,7 +419,7 @@ function updateTable() {
       <td>${fmtTime(m.date)}</td>
       <td>${fmtLat(m.lat)}<br>${fmtLon(m.lon)}</td>
       <td>${m.sunAltitudeDeg.toFixed(0)}° / ${sunElevationDeg(g.sun, g.ground).toFixed(0)}°</td>
-      <td>${fmtKm(Math.hypot(g.object.x, g.object.z) * KM_PER_UNIT)}</td>
+      <td>${fmtKm(Math.hypot(g.object.x, g.object.z) * KM_PER_UNIT)}<br>${fmtKm(objectHeightKm(m))} up</td>
       <td>${fmtKm(objectSpeedKmh(m.date))}/h</td>
       <td>${fmtDiameter(d)}</td>
     </tr>`;
@@ -496,6 +517,21 @@ bindRange('sunHeight', 'sunHeightKm', fmtKm, () => {
 });
 clampObjectHeight();
 bindRange('objectHeight', 'objectHeightKm', fmtKm, rebuildPaths);
+
+$('autoObject').checked = state.autoObject;
+function applyAutoObject() {
+  state.autoObject = $('autoObject').checked;
+  objectInput.disabled = state.autoObject;
+  if (!state.autoObject) {
+    objectInput.value = String(state.objectHeightKm);
+    $('objectHeightOut').textContent = fmtKm(state.objectHeightKm);
+  }
+}
+applyAutoObject();
+$('autoObject').addEventListener('change', () => {
+  applyAutoObject();
+  rebuildPaths();
+});
 bindRange('sunDiameter', 'sunDiameterKm', fmtKm, rebuildPaths);
 bindRange('speed', 'speed', (v) => `${v} min/s`);
 

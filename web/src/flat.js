@@ -58,3 +58,18 @@ export function sunElevationDeg(sun, ground) {
 export function requiredObjectDiameterKm(umbraDiameterKm, sunDiameterKm, objectHeightKm, sunHeightKm) {
   return (umbraDiameterKm * (sunHeightKm - objectHeightKm) + sunDiameterKm * objectHeightKm) / sunHeightKm;
 }
+
+/**
+ * Solves object height and diameter from both shadow sizes. With k = objectHeight /
+ * (sunHeight - objectHeight), the ratio of the object's distance to the ground and to the Sun:
+ *   umbra    = d - (sunDiameter - d) * k
+ *   penumbra = d + (sunDiameter + d) * k
+ * Subtracting gives k, adding gives d. The umbra is signed (negative = antumbra).
+ */
+export function solveObject(umbraDiameterKm, penumbraDiameterKm, sunDiameterKm, sunHeightKm) {
+  const k = (penumbraDiameterKm - umbraDiameterKm) / (2 * sunDiameterKm);
+  return {
+    heightKm: (sunHeightKm * k) / (1 + k),
+    diameterKm: (penumbraDiameterKm + umbraDiameterKm) / (2 * (1 + k)),
+  };
+}

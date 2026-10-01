@@ -75,7 +75,8 @@
     font: 13px var(--font-data);
   }
   .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 14px; }
-  .checks label { display: flex; gap: 6px; align-items: center; }
+  .checks label, label.check { display: flex; gap: 6px; align-items: center; }
+  input[type=range]:disabled { opacity: 0.55; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   button {
     background: transparent;
@@ -165,11 +166,12 @@
       <input id="sunHeight" type="range" min="500" max="20000" step="100"></label>
     <label class="field object">Object height <output id="objectHeightOut"></output>
       <input id="objectHeight" type="range" min="10" max="20000" step="10"></label>
+    <label class="check"><input id="autoObject" type="checkbox"> Calculate object height and size from the shadow</label>
     <label class="field">Sun diameter <output id="sunDiameterOut"></output>
       <input id="sunDiameter" type="range" min="1" max="500" step="1"></label>
-    <p class="hint">The shadow only fixes the line from the sun to the umbra. The object can sit anywhere on it,
-      so its height is a free choice. The diameter it needs follows from the sun's diameter: it has to
-      cover the sun as seen from the shadow, plus the width of the umbra itself.</p>
+    <p class="hint">The object must sit on the line from the sun to the umbra. The umbra's width alone
+      allows any height, as long as the size fits. The width of the partial-eclipse zone (penumbra) adds a
+      second condition, which fixes both. Untick the box to choose the height yourself.</p>
   </section>
 
   <section>
@@ -201,7 +203,7 @@
     <h2>Snapshots</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>UTC</th><th>Umbra</th><th>Sun alt<br>real / flat</th><th>Object from pole</th><th>Object speed</th><th>Object Ø</th></tr></thead>
+        <thead><tr><th>UTC</th><th>Umbra</th><th>Sun alt<br>real / flat</th><th>Object pole / up</th><th>Object speed</th><th>Object Ø</th></tr></thead>
         <tbody id="markerRows"></tbody>
       </table>
     </div>
@@ -223,9 +225,12 @@
     <dt>Time</dt><dd id="rTime"></dd>
     <dt>Umbra centre</dt><dd id="rShadow"></dd>
     <dt>Umbra diameter</dt><dd id="rUmbra"></dd>
+    <dt>Penumbra diameter</dt><dd id="rPenumbra"></dd>
     <dt>Sun altitude, globe</dt><dd id="rRealAlt"></dd>
     <dt>Sun elevation, flat</dt><dd id="rFlatAlt"></dd>
     <dt>Sun to umbra</dt><dd id="rSunDist"></dd>
+    <dt title="The real Sun looks 0.53° wide from everywhere on Earth">Sun's size seen from shadow</dt><dd id="rSunSize"></dd>
+    <dt title="Diameter the flat-earth Sun would need to look 0.53° wide from the shadow">Sun Ø to look 0.53°</dt><dd id="rSunNeeded"></dd>
     <dt class="obj">Object position</dt><dd id="rObjPos"></dd>
     <dt class="obj">Object speed</dt><dd id="rObjSpeed"></dd>
     <dt class="obj">Object Ø needed</dt><dd id="rObjDiam"></dd>
