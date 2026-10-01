@@ -14,6 +14,7 @@
     --sun: #ffc93d;
     --object: #b98cff;
     --track: #ff5a4f;
+    --real: #ff5a4d;
     --font-ui: 'Barlow Semi Condensed', 'Arial Narrow', system-ui, sans-serif;
     --font-data: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
     color-scheme: dark;
@@ -189,11 +190,15 @@
       <label><input id="showSunCircle" type="checkbox"> Sun's daily circle</label>
       <label><input id="showDayNight" type="checkbox"> Real day / night</label>
       <label><input id="trueScale" type="checkbox"> True sizes</label>
+      <label><input id="showModelShadow" type="checkbox"> Object's shadow</label>
+      <label><input id="showRealShadow" type="checkbox"> Real penumbra</label>
     </div>
     <div class="legend">
       <span><i style="background: var(--sun)"></i>Sun and its path during the eclipse</span>
       <span><i style="background: var(--object)"></i>Object and its path</span>
       <span><i style="background: var(--track)"></i>Umbra track (real central line)</span>
+      <span><i style="background: var(--object); opacity: 0.7"></i>Object's shadow on the disc: edge and 50% line</span>
+      <span><i style="background: var(--real)"></i>Real eclipse on the globe: edge, 50% and 90% lines</span>
       <span class="hint">With "True sizes" on, the sun, object and umbra are drawn at their real diameter.
         Rings mark them so they stay findable when zoomed out. Zoom in to compare.</span>
     </div>

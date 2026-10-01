@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { listCentralEclipses, centralTrack, shadowCenter, subsolarPoint } from './eclipse.js';
+import { listCentralEclipses, centralTrack, shadowCenter, subsolarPoint, earthFixedSunMoon } from './eclipse.js';
 import {
   DISC_RADIUS,
   KM_PER_UNIT,
@@ -44,6 +44,8 @@ const state = {
   playing: false,
   timeMs: 0,
   showDayNight: true,
+  showModelShadow: true, // shadow of the flat-earth object on the disc
+  showRealShadow: true, // outline of the real partial-eclipse zone, mapped onto the disc
   showRays: true,
   showSunCircle: true,
   showLabels: true,
@@ -78,7 +80,10 @@ scene.add(sunLight);
 
 scene.add(makeStars());
 
-// The disc: map texture, optionally darkened where it is really night on the globe.
+// The disc: map texture, optionally darkened where it is really night on the globe, plus the
+// eclipse shadows. Both are computed per pixel as the fraction of the Sun's disc that is covered:
+// by the flat-earth object as seen from the flat ground (model), and by the Moon as seen from the
+// corresponding point on the globe (real).
 const mapTexture = new THREE.CanvasTexture(drawMap(4096));
 mapTexture.colorSpace = THREE.SRGBColorSpace;
 mapTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -87,6 +92,16 @@ const discUniforms = {
   subsolar: { value: new THREE.Vector3(1, 0, 0) },
   dayNight: { value: 1 },
   discRadius: { value: DISC_RADIUS },
+  modelShadow: { value: 1 },
+  modelSun: { value: new THREE.Vector3() },
+  modelSunRadius: { value: 0 },
+  modelObject: { value: new THREE.Vector3() },
+  modelObjectRadius: { value: 0 },
+  realShadow: { value: 1 },
+  realSun: { value: new THREE.Vector3() }, // Earth-fixed, in units of 1000 km
+  realMoon: { value: new THREE.Vector3() },
+  realSunRadius: { value: 0 },
+  realMoonRadius: { value: 0 },
 };
 const disc = new THREE.Mesh(
   new THREE.CircleGeometry(DISC_RADIUS, 256).rotateX(-Math.PI / 2),
@@ -105,15 +120,71 @@ const disc = new THREE.Mesh(
       uniform vec3 subsolar;
       uniform float dayNight;
       uniform float discRadius;
+      uniform float modelShadow;
+      uniform vec3 modelSun;
+      uniform float modelSunRadius;
+      uniform vec3 modelObject;
+      uniform float modelObjectRadius;
+      uniform float realShadow;
+      uniform vec3 realSun;
+      uniform vec3 realMoon;
+      uniform float realSunRadius;
+      uniform float realMoonRadius;
       varying vec2 vUv;
       varying vec3 vPos;
+
+      const float PI = 3.14159265;
+
+      float angleBetween(vec3 a, vec3 b) {
+        return atan(length(cross(a, b)), dot(a, b));
+      }
+
+      // Fraction of a disc of angular radius a covered by a disc of radius b at separation c.
+      float coverage(float a, float b, float c) {
+        if (b <= 0.0 || c >= a + b) return 0.0;
+        if (c <= abs(a - b)) return b >= a ? 1.0 : (b * b) / (a * a);
+        float a2 = a * a, b2 = b * b, c2 = c * c;
+        float lens = a2 * acos(clamp((c2 + a2 - b2) / (2.0 * c * a), -1.0, 1.0))
+                   + b2 * acos(clamp((c2 + b2 - a2) / (2.0 * c * b), -1.0, 1.0))
+                   - 0.5 * sqrt(max((-c + a + b) * (c + a - b) * (c - a + b) * (c + a + b), 0.0));
+        return lens / (PI * a2);
+      }
+
+      float eclipsed(vec3 eye, vec3 sun, float sunR, vec3 body, float bodyR) {
+        vec3 toSun = sun - eye, toBody = body - eye;
+        float a = asin(min(sunR / length(toSun), 1.0));
+        float b = asin(min(bodyR / length(toBody), 1.0));
+        return coverage(a, b, angleBetween(normalize(toSun), normalize(toBody)));
+      }
+
+      // Anti-aliased line where f crosses level.
+      float contour(float f, float level) {
+        float w = max(fwidth(f), 1e-5);
+        return 1.0 - smoothstep(0.5, 1.5, abs(f - level) / w);
+      }
+
       void main() {
         vec4 c = texture2D(map, vUv);
         float colat = length(vPos.xz) / discRadius * 3.14159265;
         float lon = atan(-vPos.z, vPos.x) + 1.57079633;
         vec3 n = vec3(sin(colat) * cos(lon), sin(colat) * sin(lon), cos(colat));
         float day = smoothstep(-0.06, 0.06, dot(n, subsolar));
-        gl_FragColor = vec4(c.rgb * mix(1.0, mix(0.3, 1.0, day), dayNight), 1.0);
+        vec3 color = c.rgb * mix(1.0, mix(0.3, 1.0, day), dayNight);
+
+        if (modelShadow > 0.5) {
+          float m = eclipsed(vec3(vPos.x, 0.0, vPos.z), modelSun, modelSunRadius, modelObject, modelObjectRadius);
+          color *= 1.0 - 0.85 * m;
+          float edge = max(contour(m, 0.002), contour(m, 0.5));
+          color = mix(color, vec3(0.75, 0.6, 1.0), 0.8 * edge);
+        }
+        if (realShadow > 0.5) {
+          vec3 p = n * 6.371;
+          float r = eclipsed(p, realSun, realSunRadius, realMoon, realMoonRadius);
+          r *= smoothstep(-0.003, 0.003, dot(n, normalize(realSun - p))); // only where the Sun is up
+          float edge = max(contour(r, 0.002), max(contour(r, 0.5), contour(r, 0.9)));
+          color = mix(color, vec3(1.0, 0.35, 0.3), 0.85 * edge);
+        }
+        gl_FragColor = vec4(color, 1.0);
         #include <colorspace_fragment>
       }`,
   }),
@@ -361,8 +432,18 @@ function updateLive() {
   discUniforms.subsolar.value.set(Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat));
   discUniforms.dayNight.value = state.showDayNight ? 1 : 0;
 
+  const real = earthFixedSunMoon(date);
+  const u = discUniforms;
+  u.realShadow.value = state.showRealShadow ? 1 : 0;
+  u.realSun.value.set(real.sun.x, real.sun.y, real.sun.z).divideScalar(KM_PER_UNIT);
+  u.realMoon.value.set(real.moon.x, real.moon.y, real.moon.z).divideScalar(KM_PER_UNIT);
+  u.realSunRadius.value = real.sunRadiusKm / KM_PER_UNIT;
+  u.realMoonRadius.value = real.moonRadiusKm / KM_PER_UNIT;
+  u.modelShadow.value = state.showModelShadow && c ? 1 : 0;
+
   const visible = !!c;
-  for (const o of [objectMesh, shadowSpot, shadowRing]) o.visible = visible;
+  for (const o of [objectMesh, shadowRing]) o.visible = visible;
+  shadowSpot.visible = visible && !state.showModelShadow;
   liveRay.visible = liveDrop.visible = visible && !state.fromShadow;
   if (!c) return;
 
@@ -385,6 +466,10 @@ function updateLive() {
   }
   objectBody.scale.setScalar(displayRadius(diameter, 0.16));
   objectBody.visible = diameter > 0;
+  u.modelSun.value.copy(v3(g.sun));
+  u.modelSunRadius.value = state.sunDiameterKm / 2 / KM_PER_UNIT;
+  u.modelObject.value.copy(v3(g.object));
+  u.modelObjectRadius.value = Math.max(diameter, 0) / 2 / KM_PER_UNIT;
   if (state.fromShadow) lookFromShadow(g);
   objectLabel.position.set(0, -0.32, 0);
   objectLabel.element.textContent = `object Ø ${fmtDiameter(diameter)}`;
@@ -544,6 +629,8 @@ $('interval').addEventListener('change', () => {
 
 for (const [id, key] of [
   ['showDayNight', 'showDayNight'],
+  ['showModelShadow', 'showModelShadow'],
+  ['showRealShadow', 'showRealShadow'],
   ['showRays', 'showRays'],
   ['showSunCircle', 'showSunCircle'],
   ['showLabels', 'showLabels'],

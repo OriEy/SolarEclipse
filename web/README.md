@@ -27,6 +27,10 @@ A 3D simulation of how a real solar eclipse would have to work on a flat earth.
 - The readout also shows how big the flat-earth Sun looks from the shadow, and how big it would
   have to be to look 0.53° wide like the real one. This is where the model stops fitting: the
   answer changes over the course of the eclipse.
+- Two shadows are drawn on the disc, both computed per pixel as the share of the Sun that is covered:
+  the object's shadow from the flat-earth Sun (darkening, purple edge and 50% line), and the real
+  partial eclipse on the globe mapped onto the disc (red edge, 50% and 90% lines, only where the
+  real Sun is up). Where they differ, the flat model cannot reproduce the real eclipse.
 - Snapshots (every 15 min – 2 h) show the Sun, the line of possible object positions, and the object.
   The table compares the Sun's real altitude at the umbra with its elevation in the flat model,
   and lists the object's speed and needed diameter.

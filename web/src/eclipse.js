@@ -27,6 +27,19 @@ function toGeo(v, time) {
 }
 
 /**
+ * Earth-fixed (ECEF-like, km) positions of Sun and Moon: x towards 0°E, z towards the North Pole.
+ * Used to work out how much of the Sun the Moon covers from any point on the globe.
+ */
+export function earthFixedSunMoon(date) {
+  const time = Astronomy.MakeTime(date);
+  const { sun, moon } = sunMoonOfDate(time);
+  const gast = Astronomy.SiderealTime(time) * 15 / RAD2DEG;
+  const c = Math.cos(gast), s = Math.sin(gast);
+  const rot = (v) => ({ x: v.x * c + v.y * s, y: -v.x * s + v.y * c, z: v.z });
+  return { sun: rot(sun), moon: rot(moon), sunRadiusKm: SUN_RADIUS_KM, moonRadiusKm: MOON_RADIUS_KM };
+}
+
+/**
  * The point on Earth directly below the Sun: geodetic latitude = declination,
  * longitude = right ascension - Greenwich apparent sidereal time.
  */
