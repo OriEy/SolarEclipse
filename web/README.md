@@ -8,7 +8,7 @@ A 3D simulation of how a real solar eclipse would have to work on a flat earth.
   always directly above the real subsolar point.
 - The umbra track is real: the central line of the eclipse is computed from the
   [astronomy-engine](https://github.com/cosinekitty/astronomy) ephemeris (Sun–Moon shadow axis
-  intersected with the WGS84 ellipsoid). For 8 April 2024 it gives greatest eclipse at
+  intersected with the WGS84 ellipsoid). For 8 April 2024 (selectable in the eclipse list; the page opens on 12 August 2026) it gives greatest eclipse at
   25.3°N 104.1°W, 18:17 UT, Sun altitude 69.8°, matching NASA's published values.
 - From the real umbra position and the flat-earth Sun, the shadow-casting object must lie on the
   straight line between them. The shadow alone cannot tell *where* on that line, so the object's

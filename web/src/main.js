@@ -169,7 +169,7 @@ eclipses.forEach((e, i) => {
   opt.textContent = `${e.peak.toISOString().slice(0, 10)} · ${e.kind} · ${fmtLat(e.lat)} ${fmtLon(e.lon)}`;
   select.appendChild(opt);
 });
-const defaultIndex = eclipses.findIndex((e) => e.peak.toISOString().startsWith('2024-04-08'));
+const defaultIndex = eclipses.findIndex((e) => e.peak.toISOString().startsWith('2026-08-12'));
 select.value = String(Math.max(defaultIndex, 0));
 
 function loadEclipse(index) {
